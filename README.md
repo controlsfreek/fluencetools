@@ -4,11 +4,13 @@ Tools for site and inverter work.
 
 ## EPC M10 terminal HMI
 
-`bin/epc-m10-hmi` is a **read-only** full-screen terminal HMI for [EPC Power M10](https://www.epcpower.com/products/m-system) inverters. It subscribes to Sparkplug B on an MQTT broker, watches `NBIRTH` / `DBIRTH` (and death) to build a list of M10s, and opens the operator screen for the inverter you select.
+`bin/epc-m10-hmi` is a **read-only** full-screen terminal HMI for [EPC Power M10](https://www.epcpower.com/products/m-system) inverters. It is implemented in **pure bash** (no Python, no `paho-mqtt`, no virtualenv).
 
-Other device types on the same broker are ignored.
+It opens an MQTT 3.1.1 session over bash `/dev/tcp`, subscribes to Sparkplug B, watches `NBIRTH` / `DBIRTH` (and death) to build a list of M10s, and opens the operator screen for the inverter you select.
 
-It never publishes. MQTT publish and last-will are disabled in the client, it does not send Sparkplug `NCMD` / `DCMD`, and it does not act as a primary host (`STATE`). Nothing in the HMI can command an M10 or any other device on the broker.
+Other device types on the same broker are ignored (for example a BMS on the demo fleet).
+
+It never publishes. There is no MQTT PUBLISH path and no last will; it does not send Sparkplug `NCMD` / `DCMD`, and it does not act as a primary host (`STATE` is ignored). Nothing in the HMI can command an M10 or any other device on the broker.
 
 An M10 is recognized from its Sparkplug path or birth tags (device / node / model / type containing `M10`).
 
@@ -16,10 +18,10 @@ The M10’s native control interface is Modbus TCP. Sparkplug B usually comes fr
 
 ### Run
 
-Needs Python 3.11+ (3.14 is fine). The script creates a local `.venv` and installs `paho-mqtt` the first time.
+Requires bash 4+ with `/dev/tcp` (bash’s built-in TCP). No packages to install for the demo; live mode talks to the broker with `/dev/tcp` only (no mosquitto client).
 
 ```bash
-# preview the selector and screen with three simulated M10s
+# preview the selector and screen with three simulated M10s (+ one filtered BMS)
 ./bin/epc-m10-hmi --demo
 
 # live broker — starts on the inverter list
@@ -29,9 +31,11 @@ Needs Python 3.11+ (3.14 is fine). The script creates a local `.venv` and instal
 ./bin/epc-m10-hmi --host 10.0.0.20 --port 1883 --device M10-A
 ```
 
-Optional: `--group`, `--node`, `--username`, `--password`. Same values can be set with `M10_MQTT_*` and `M10_SPARKPLUG_*` env vars.
+Optional: `--group`, `--node`, `--username`, `--password`, `--client-id`, `--topic`.
 
-Default subscribe topic is `spBv1.0/#`.
+Same values can be set with env vars: `M10_MQTT_HOST`, `M10_MQTT_PORT`, `M10_MQTT_USERNAME`, `M10_MQTT_PASSWORD`, `M10_MQTT_CLIENT_ID`, `M10_SPARKPLUG_GROUP`, `M10_SPARKPLUG_NODE`, `M10_SPARKPLUG_DEVICE`.
+
+Default subscribe topic is `spBv1.0/#`. Tags go stale after about 5 seconds without an update.
 
 ### Keys
 
@@ -41,5 +45,9 @@ On the HMI: `Esc` back to the list, `q` quits.
 
 ### Layout
 
-- Selector: device, node, group, online / stale / offline
+- Selector: device, node, group, online / stale / offline (M10 only; UI shows **READ ONLY**)
 - HMI: connection badge, KPIs, DC / battery, thermal / state, alarms
+
+### Notes
+
+The previous Python / `paho-mqtt` implementation was removed. MQTT QoS is subscribe QoS 0; PUBLISH packets with QoS &gt; 0 are parsed for topic/payload but not acknowledged. The Sparkplug decoder covers the focused Metric types used by the HMI (int/float/double/bool/string); datasets, templates, and bytes are skipped.
